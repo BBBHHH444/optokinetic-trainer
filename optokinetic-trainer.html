@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optokinetic Trainer</title>
+<style>
+  :root{
+    --bg:#050607;
+    --panel:#0f1417;
+    --panel-line:#1d2529;
+    --ink:#e7ecee;
+    --ink-dim:#7c8890;
+    --accent:#49d3c4;
+    --accent-dim:#1f3d3a;
+    --warn:#e8a94c;
+    --danger:#e0654f;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--bg); color:var(--ink);
+    font-family:'IBM Plex Mono','SF Mono',ui-monospace,Menlo,monospace;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #stage{
+    position:fixed; inset:0; display:block; touch-action:none;
+  }
+  .brand{
+    position:fixed; top:18px; left:20px; z-index:5;
+    font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--ink-dim); pointer-events:none;
+    transition:opacity .5s ease;
+  }
+  .brand b{ color:var(--ink); font-weight:600; }
+  .clock{
+    position:fixed; top:18px; right:20px; z-index:5;
+    font-size:13px; letter-spacing:.06em; color:var(--ink-dim);
+    font-variant-numeric:tabular-nums; pointer-events:none;
+    transition:opacity .5s ease;
+  }
+  .clock .t{ color:var(--accent); font-size:20px; font-weight:600; }
+
+  #dock{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%);
+    width:min(920px, calc(100% - 32px));
+    background:rgba(15,20,23,.86);
+    border:1px solid var(--panel-line);
+    border-radius:14px;
+    backdrop-filter:blur(10px);
+    padding:16px 18px 12px;
+    z-index:10;
+    transition:opacity .4s ease, transform .4s ease;
+  }
+  #dock.hidden{ opacity:0; transform:translateX(-50%) translateY(14px); pointer-events:none; }
+
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px; }
+  .row:last-child{ margin-bottom:0; }
+
+  .field{ display:flex; flex-direction:column; gap:5px; min-width:110px; flex:1; }
+  .field label{
+    font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim);
+    display:flex; justify-content:space-between;
+  }
+  .field label span.val{ color:var(--accent); }
+
+  select, input[type=color]{
+    background:#0a0d0f; border:1px solid var(--panel-line); color:var(--ink);
+    border-radius:7px; padding:7px 8px; font-family:inherit; font-size:12.5px;
+    outline:none; width:100%;
+  }
+  select:focus{ border-color:var(--accent); }
+  input[type=range]{
+    -webkit-appearance:none; width:100%; height:22px; background:transparent;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:3px; background:var(--panel-line); border-radius:2px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; margin-top:-5.5px;
+    border-radius:50%; background:var(--accent); border:2px solid #08100f;
+    cursor:pointer;
+  }
+  input[type=color]{ padding:2px; height:30px; cursor:pointer; }
+
+  .btnrow{ display:flex; gap:8px; align-items:center; }
+  button{
+    font-family:inherit; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+    background:#0a0d0f; border:1px solid var(--panel-line); color:var(--ink);
+    border-radius:8px; padding:9px 14px; cursor:pointer; transition:.15s ease;
+  }
+  button:hover{ border-color:var(--accent); color:var(--accent); }
+  button.primary{ background:var(--accent); color:#04211d; border-color:var(--accent); font-weight:600; }
+  button.primary:hover{ opacity:.9; color:#04211d; }
+  button.icon{ padding:9px 11px; }
+  button:disabled{ opacity:.35; cursor:default; }
+
+  .toggle{
+    display:flex; align-items:center; gap:8px; font-size:11px; color:var(--ink-dim);
+    letter-spacing:.06em; text-transform:uppercase; cursor:pointer; user-select:none;
+  }
+  .toggle input{ accent-color:var(--accent); width:14px; height:14px; }
+
+  .hint{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:var(--ink-dim); font-size:12px; letter-spacing:.05em; text-align:center;
+    z-index:4; pointer-events:none; line-height:1.7;
+  }
+  .hint b{ color:var(--ink); }
+  .hint.hide{ display:none; }
+
+  .divider{ width:1px; align-self:stretch; background:var(--panel-line); margin:0 2px; }
+
+  @media (max-width:640px){
+    .row{ gap:8px; }
+    .field{ min-width:88px; }
+    .brand{ display:none; }
+    .clock{ top:auto; bottom:190px; right:50%; transform:translateX(50%); font-size:11px; }
+    .clock .t{ font-size:16px; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<div class="brand"><b>OKN</b> · TRAINER</div>
+<div class="clock"><span class="t" id="clockTime">00:00</span> · <span id="clockLabel">READY</span></div>
+
+<div class="hint" id="hint">
+  Full-field motion stimulus for oculomotor / vestibular training.<br>
+  Pick a pattern below, then press <b>Start</b>. Press <b>space</b> to pause, <b>F</b> to hide controls.
+</div>
+
+<div id="dock">
+  <div class="row">
+    <div class="field">
+      <label>Pattern</label>
+      <select id="pattern">
+        <option value="stripesH">Stripes — horizontal drift</option>
+        <option value="stripesV">Stripes — vertical drift</option>
+        <option value="radial">Radial spokes — rotation</option>
+        <option value="dots">Dot field — directional</option>
+        <option value="checker">Checkerboard — reversal</option>
+        <option value="pursuit">Pursuit target — single dot</option>
+      </select>
+    </div>
+    <div class="field" id="dirField">
+      <label>Direction</label>
+      <select id="direction">
+        <option value="1">→ / CW</option>
+        <option value="-1">← / CCW</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Speed <span class="val" id="speedVal">30</span>°/s</label>
+      <input type="range" id="speed" min="2" max="120" value="30" step="1">
+    </div>
+    <div class="field" id="densField">
+      <label>Density <span class="val" id="densVal">14</span></label>
+      <input type="range" id="density" min="4" max="40" value="14" step="1">
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field" style="max-width:90px;">
+      <label>Color A</label>
+      <input type="color" id="colorA" value="#f4f4f4">
+    </div>
+    <div class="field" style="max-width:90px;">
+      <label>Color B</label>
+      <input type="color" id="colorB" value="#050607">
+    </div>
+    <div class="field">
+      <label class="toggle" style="margin-top:9px;">
+        <input type="checkbox" id="fixation" checked> Fixation point
+      </label>
+    </div>
+    <div class="field">
+      <label>Session target <span class="val" id="targetVal">off</span></label>
+      <input type="range" id="target" min="0" max="600" value="0" step="15">
+    </div>
+    <div class="divider"></div>
+    <div class="btnrow">
+      <button class="primary" id="startBtn">Start</button>
+      <button class="icon" id="resetBtn" title="Reset timer">↺</button>
+      <button class="icon" id="fsBtn" title="Fullscreen">⛶</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+let W, H, DPR;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---- controls ----
+const $ = id => document.getElementById(id);
+const patternSel = $('pattern'), dirSel = $('direction'), speedR = $('speed'),
+      densR = $('density'), colorA = $('colorA'), colorB = $('colorB'),
+      fixation = $('fixation'), targetR = $('target'),
+      startBtn = $('startBtn'), resetBtn = $('resetBtn'), fsBtn = $('fsBtn'),
+      dock = $('dock'), hint = $('hint'), clockTime = $('clockTime'), clockLabel = $('clockLabel'),
+      speedVal = $('speedVal'), densVal = $('densVal'), targetVal = $('targetVal'), dirField = $('dirField');
+
+let running = false, elapsed = 0, lastT = null, phase = 0;
+let dotsCache = null;
+let audioCtx = null;
+
+function unlockAudio(){
+  // Must be created/resumed from within a real user gesture (the Start click).
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playChime(){
+  if (!audioCtx) return;
+  const notes = [880, 1108.7, 1318.5]; // A5, C#6, E6 — short rising triad
+  notes.forEach((freq, i) => {
+    const t0 = audioCtx.currentTime + i * 0.14;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(0.22, t0 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.55);
+  });
+}
+
+function fmtTime(s){
+  const m = Math.floor(s/60), sec = Math.floor(s%60);
+  return String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+}
+
+function updateLabels(){
+  speedVal.textContent = speedR.value;
+  densVal.textContent = densR.value;
+  targetVal.textContent = targetR.value == 0 ? 'off' : fmtTime(+targetR.value);
+  dirField.style.display = patternSel.value === 'checker' ? 'none' : 'flex';
+  if (!running) {
+    const targetS = +targetR.value;
+    clockTime.textContent = targetS > 0 ? fmtTime(targetS) : fmtTime(elapsed);
+  }
+}
+[speedR, densR, targetR, patternSel].forEach(el => el.addEventListener('input', updateLabels));
+updateLabels();
+
+function buildDots(){
+  const n = +densR.value * 6;
+  dotsCache = Array.from({length:n}, () => ({
+    x: Math.random()*W, y: Math.random()*H, r: 2 + Math.random()*3
+  }));
+}
+densR.addEventListener('change', buildDots);
+window.addEventListener('resize', () => { if(dotsCache) buildDots(); });
+
+function draw(dt){
+  const speed = +speedR.value;
+  const dir = +dirSel.value;
+  const density = +densR.value;
+  const cA = colorA.value, cB = colorB.value;
+  const pattern = patternSel.value;
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = cB;
+  ctx.fillRect(0,0,W,H);
+
+  if (running) phase += dir * speed * dt * 2; // px or deg per second scaled
+
+  if (pattern === 'stripesH' || pattern === 'stripesV') {
+    const stripeW = Math.max(W,H) / density;
+    ctx.fillStyle = cA;
+    const offset = ((phase % (stripeW*2)) + stripeW*2) % (stripeW*2);
+    if (pattern === 'stripesH') {
+      for (let x = -stripeW*2 + offset; x < W + stripeW; x += stripeW*2) {
+        ctx.fillRect(x, 0, stripeW, H);
+      }
+    } else {
+      for (let y = -stripeW*2 + offset; y < H + stripeW; y += stripeW*2) {
+        ctx.fillRect(0, y, W, stripeW);
+      }
+    }
+  }
+
+  else if (pattern === 'radial') {
+    const cx = W/2, cy = H/2;
+    const R = Math.hypot(W,H)/2 + 20;
+    const spokes = density;
+    const angStep = Math.PI*2/spokes;
+    const rot = (phase * Math.PI/180);
+    ctx.fillStyle = cA;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    for (let i=0;i<spokes;i++){
+      if (i % 2 === 0) continue;
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.arc(0,0,R, i*angStep, (i+1)*angStep);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  else if (pattern === 'dots') {
+    if (!dotsCache) buildDots();
+    ctx.fillStyle = cA;
+    const dx = dir * speed * dt * 40;
+    dotsCache.forEach(d => {
+      d.x += dx;
+      if (d.x > W + 10) d.x = -10;
+      if (d.x < -10) d.x = W + 10;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, Math.PI*2);
+      ctx.fill();
+    });
+  }
+
+  else if (pattern === 'checker') {
+    const cell = Math.max(W,H) / density;
+    const flip = Math.floor(phase / 40) % 2; // reverses on a timer, not direction
+    for (let y=0, j=0; y<H; y+=cell, j++){
+      for (let x=0, i=0; x<W; x+=cell, i++){
+        const even = (i+j) % 2 === 0;
+        ctx.fillStyle = (even ^ flip) ? cA : cB;
+        ctx.fillRect(x,y,cell+1,cell+1);
+      }
+    }
+  }
+
+  else if (pattern === 'pursuit') {
+    ctx.fillStyle = cB;
+    ctx.fillRect(0,0,W,H);
+    const cx = W/2, cy = H/2;
+    const rad = Math.min(W,H)*0.32;
+    const ang = (phase * Math.PI/180);
+    const px = cx + Math.cos(ang)*rad;
+    const py = cy + Math.sin(ang*0.9)*rad*0.6;
+    ctx.fillStyle = cA;
+    ctx.beginPath();
+    ctx.arc(px, py, 12, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  if (fixation.checked && pattern !== 'pursuit') {
+    ctx.beginPath();
+    ctx.arc(W/2, H/2, 4, 0, Math.PI*2);
+    ctx.fillStyle = '#e0654f';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(W/2, H/2, 9, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(224,101,79,.5)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+function tick(t){
+  if (lastT === null) lastT = t;
+  const dt = Math.min((t - lastT)/1000, 0.05);
+  lastT = t;
+
+  if (running) {
+    elapsed += dt;
+    const targetS = +targetR.value;
+    if (targetS > 0) {
+      const remaining = Math.max(0, targetS - elapsed);
+      clockTime.textContent = fmtTime(remaining);
+    } else {
+      clockTime.textContent = fmtTime(elapsed);
+    }
+    if (targetS > 0 && elapsed >= targetS) {
+      running = false;
+      clockLabel.textContent = 'DONE';
+      startBtn.textContent = 'Start';
+      clockTime.textContent = fmtTime(0);
+      flashDone();
+      playChime();
+    }
+  }
+  draw(dt);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function flashDone(){
+  let n = 0;
+  const iv = setInterval(() => {
+    document.body.style.background = n%2===0 ? '#111' : '#050607';
+    n++;
+    if (n>5){ clearInterval(iv); document.body.style.background='#050607'; }
+  }, 160);
+}
+
+function toggleRunning(){
+  unlockAudio();
+  running = !running;
+  startBtn.textContent = running ? 'Pause' : 'Start';
+  clockLabel.textContent = running ? 'RUNNING' : 'PAUSED';
+  hint.classList.add('hide');
+  lastT = null;
+}
+startBtn.addEventListener('click', toggleRunning);
+
+resetBtn.addEventListener('click', () => {
+  elapsed = 0;
+  const targetS = +targetR.value;
+  clockTime.textContent = targetS > 0 ? fmtTime(targetS) : '00:00';
+  clockLabel.textContent = running ? 'RUNNING' : 'READY';
+});
+
+// Real browser Fullscreen often can't be granted inside an embedded/sandboxed
+// frame (no visible error, the promise just silently rejects). We still try
+// it as a bonus, but dock-hide ("focus mode") below is what actually does
+// the visual work every time, regardless of whether Fullscreen was granted.
+fsBtn.addEventListener('click', () => {
+  const req = document.documentElement.requestFullscreen
+    ? document.documentElement.requestFullscreen()
+    : Promise.reject();
+  req.catch(() => { /* not available in this context — focus mode still applies */ });
+  if (!dockHidden) toggleDock();
+});
+
+let dockHidden = false;
+function toggleDock(){
+  dockHidden = !dockHidden;
+  dock.classList.toggle('hidden', dockHidden);
+}
+
+window.addEventListener('keydown', e => {
+  const tag = (e.target && e.target.tagName) || '';
+  const inField = tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA';
+
+  if (e.code === 'Space'){
+    e.preventDefault();
+    e.stopPropagation();
+    // Blur any focused control first — otherwise the browser's own
+    // "activate button on keyup" also fires and cancels this toggle out.
+    if (document.activeElement && document.activeElement !== document.body) {
+      document.activeElement.blur();
+    }
+    toggleRunning();
+    return;
+  }
+  if ((e.key === 'f' || e.key === 'F') && !inField){
+    toggleDock();
+  }
+}, true);
+
+canvas.addEventListener('dblclick', () => toggleDock());
+canvas.tabIndex = -1;
+</script>
+</body>
+</html>
