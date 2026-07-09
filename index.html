@@ -146,6 +146,10 @@
         <option value="pursuit">Pursuit target — single dot</option>
       </select>
     </div>
+    <div class="field" style="max-width:64px;">
+      <label>&nbsp;</label>
+      <button class="icon" id="rotateBtn" title="Switch stripes horizontal / vertical">⟳ 90°</button>
+    </div>
     <div class="field" id="dirField">
       <label>Direction</label>
       <select id="direction">
@@ -184,7 +188,6 @@
     <div class="divider"></div>
     <div class="btnrow">
       <button class="primary" id="startBtn">Start</button>
-      <button class="icon" id="resetBtn" title="Reset timer">↺</button>
       <button class="icon" id="fsBtn" title="Fullscreen">⛶</button>
     </div>
   </div>
@@ -210,7 +213,8 @@ const $ = id => document.getElementById(id);
 const patternSel = $('pattern'), dirSel = $('direction'), speedR = $('speed'),
       densR = $('density'), colorA = $('colorA'), colorB = $('colorB'),
       fixation = $('fixation'), targetR = $('target'),
-      startBtn = $('startBtn'), resetBtn = $('resetBtn'), fsBtn = $('fsBtn'),
+      startBtn = $('startBtn'), fsBtn = $('fsBtn'),
+      rotateBtn = $('rotateBtn'),
       dock = $('dock'), hint = $('hint'), clockTime = $('clockTime'), clockLabel = $('clockLabel'),
       speedVal = $('speedVal'), densVal = $('densVal'), targetVal = $('targetVal'), dirField = $('dirField');
 
@@ -252,11 +256,17 @@ function updateLabels(){
   densVal.textContent = densR.value;
   targetVal.textContent = targetR.value == 0 ? 'off' : fmtTime(+targetR.value);
   dirField.style.display = patternSel.value === 'checker' ? 'none' : 'flex';
+  rotateBtn.disabled = (patternSel.value !== 'stripesH' && patternSel.value !== 'stripesV');
   if (!running) {
     const targetS = +targetR.value;
     clockTime.textContent = targetS > 0 ? fmtTime(targetS) : fmtTime(elapsed);
   }
 }
+rotateBtn.addEventListener('click', () => {
+  if (patternSel.value === 'stripesH') patternSel.value = 'stripesV';
+  else if (patternSel.value === 'stripesV') patternSel.value = 'stripesH';
+  updateLabels();
+});
 [speedR, densR, targetR, patternSel].forEach(el => el.addEventListener('input', updateLabels));
 updateLabels();
 
@@ -417,13 +427,6 @@ function toggleRunning(){
   lastT = null;
 }
 startBtn.addEventListener('click', toggleRunning);
-
-resetBtn.addEventListener('click', () => {
-  elapsed = 0;
-  const targetS = +targetR.value;
-  clockTime.textContent = targetS > 0 ? fmtTime(targetS) : '00:00';
-  clockLabel.textContent = running ? 'RUNNING' : 'READY';
-});
 
 // Real browser Fullscreen often can't be granted inside an embedded/sandboxed
 // frame (no visible error, the promise just silently rejects). We still try
