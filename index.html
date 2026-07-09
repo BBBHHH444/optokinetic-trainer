@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Optokinetic Trainer</title>
 <style>
   :root{
@@ -464,7 +464,26 @@ window.addEventListener('keydown', e => {
 }, true);
 
 canvas.addEventListener('dblclick', () => toggleDock());
+
+// Native dblclick is unreliable on mobile (often eaten by browser zoom
+// gestures instead). Detect double-tap manually from pointer events too.
+let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
+canvas.addEventListener('pointerup', e => {
+  const now = Date.now();
+  const dx = e.clientX - lastTapX, dy = e.clientY - lastTapY;
+  const closeEnough = Math.hypot(dx, dy) < 40;
+  if (now - lastTapTime < 350 && closeEnough) {
+    toggleDock();
+    lastTapTime = 0; // avoid a triple-tap re-triggering
+  } else {
+    lastTapTime = now;
+    lastTapX = e.clientX;
+    lastTapY = e.clientY;
+  }
+});
+
 canvas.tabIndex = -1;
 </script>
 </body>
 </html>
+
